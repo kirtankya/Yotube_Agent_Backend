@@ -239,7 +239,15 @@ app.post('/api/download', (req, res) => {
         }
     }, 5 * 60 * 1000);
 
-    const streamUrl = `${req.protocol}://${req.get('host')}/api/stream/${fileId}`;
+    // Generate robust URL for all environments (Local, Vercel, Ngrok, Render)
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+
+    // Ensure https if strictly on production/cloud (optional but safe)
+    const finalProtocol = host.includes('localhost') ? protocol : 'https';
+
+    const streamUrl = `${finalProtocol}://${host}/api/stream/${fileId}`;
+    console.log(`🔗 Generated Link: ${streamUrl}`);
 
     // Return immediately
     res.json({
