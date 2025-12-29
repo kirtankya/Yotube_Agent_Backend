@@ -23,6 +23,7 @@ const corsOptions = {
             'localhost',
             '127.0.0.1',
             'netlify.app',
+            'vercel.app',
             'ngrok-free.app',
             'ngrok.io'
         ];
