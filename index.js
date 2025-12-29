@@ -8,41 +8,16 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
 import os from 'os';
-
 const app = express();
 app.set('trust proxy', 1); // REQUIRED for Ngrok/Netlify to correctly generate download links
 const PORT = 3000;
 
-// ===================== PERMANENT CORS FIX =====================
+// ===================== PERMANENT CORS FIX (ALLOW ALL) =====================
 const corsOptions = {
-    origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, Postman)
-        if (!origin) return callback(null, true);
-
-        // list of allowed domains
-        const allowedDomains = [
-            'localhost',
-            '127.0.0.1',
-            'netlify.app',
-            'vercel.app',
-            'ngrok-free.app',
-            'ngrok.io'
-        ];
-
-        // Check if the origin contains any of the allowed domains
-        const isAllowed = allowedDomains.some(domain => origin.includes(domain));
-
-        if (isAllowed) {
-            callback(null, true);
-        } else {
-            console.log(`⚠️ CORS: Blocked foreign origin: ${origin}`);
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    origin: true, // "true" => Reflects the request origin (Allows ANY domain)
+    credentials: true, // Allows cookies/headers
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'ngrok-skip-browser-warning'],
-    credentials: true,
-    optionsSuccessStatus: 200
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'ngrok-skip-browser-warning']
 };
 
 app.use(cors(corsOptions));
@@ -86,8 +61,6 @@ app.get('/api/info', async (req, res) => {
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             referer: 'https://www.youtube.com/',
             // Add cookies if needed locally, e.g., cookies: './cookies.txt'
-        }, {
-            ytDlpBinary: ytDlpPath
         });
 
         // Parse formats
