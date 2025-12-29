@@ -7,6 +7,7 @@ import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
 import { v4 as uuid } from 'uuid';
+import os from 'os';
 
 const app = express();
 app.set('trust proxy', 1); // REQUIRED for Ngrok/Netlify to correctly generate download links
@@ -52,8 +53,9 @@ app.options(/(.*)/, cors(corsOptions));
 app.use(express.json());
 
 // ===================== TEMP DIR =====================
-const TEMP_DIR = './temp';
-if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR);
+// ===================== TEMP DIR =====================
+const TEMP_DIR = os.tmpdir(); // Use system temp dir (works on Vercel/Linux and Windows)
+// No need to ensure exists, system temp always exists
 
 // ===================== HELPER =====================
 const formatBytes = (bytes, decimals = 2) => {
@@ -146,9 +148,22 @@ app.get('/api/info', async (req, res) => {
 const downloadJobs = new Map();
 
 // ===================== YT-DLP BINARY PATH =====================
-// Attempt to find the binary installed by yt-dlp-exec
-const ytDlpPath = path.resolve('./node_modules/yt-dlp-exec/bin/yt-dlp.exe');
-// Note: On non-Windows this would not have .exe, but user is on Windows.
+// Detect platform to set correct binary path
+const isWindows = process.platform === 'win32';
+const possibleBinPath = path.resolve('./node_modules/yt-dlp-exec/bin/yt-dlp' + (isWindows ? '.exe' : ''));
+
+// Function to get the executable
+const getYtDlpPath = () => {
+    // 1. Try local node_modules (for Vercel/Local)
+    if (fs.existsSync(possibleBinPath)) {
+        return possibleBinPath;
+    }
+    // 2. Fallback to just 'yt-dlp' if in PATH
+    return 'yt-dlp';
+};
+
+const ytDlpPath = getYtDlpPath();
+console.log(`ℹ️ User determined yt-dlp path: ${ytDlpPath}`);
 
 // ===================== STREAM API (GET) =====================
 app.get('/api/stream/:id', (req, res) => {
