@@ -45,13 +45,14 @@ const formatBytes = (bytes, decimals = 2) => {
 app.get('/api/test', async (req, res) => {
     try {
         console.log('Testing yt-dlp binary execution...');
+        // Let the library find the binary itself
         const version = await yt_dlp('--version');
         res.json({
             status: 'ok',
             message: 'yt-dlp is working!',
             version: version,
-            path: ytDlpPath,
-            tempDir: TEMP_DIR
+            cwd: process.cwd(),
+            ffmpeg: ffmpegPath
         });
     } catch (error) {
         console.error('Test Failed:', error);
@@ -59,7 +60,8 @@ app.get('/api/test', async (req, res) => {
             status: 'error',
             message: 'yt-dlp failed to run',
             details: error.message,
-            path: ytDlpPath
+            cwd: process.cwd(),
+            ffmpeg: ffmpegPath
         });
     }
 });
@@ -82,8 +84,6 @@ app.get('/api/info', async (req, res) => {
             preferFreeFormats: false,
             userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             referer: 'https://www.youtube.com/',
-        }, {
-            ytDlpBinary: ytDlpPath
         });
 
         // Parse formats
@@ -147,25 +147,6 @@ app.get('/api/info', async (req, res) => {
 // ===================== JOB STORE =====================
 const downloadJobs = new Map();
 
-// ===================== YT-DLP BINARY PATH =====================
-// Detect platform to set correct binary path
-const isWindows = process.platform === 'win32';
-// When in api/ folder, process.cwd() is usually root. But let's be safe.
-const possibleBinPath = path.resolve(process.cwd(), 'node_modules/yt-dlp-exec/bin/yt-dlp' + (isWindows ? '.exe' : ''));
-
-// Function to get the executable
-const getYtDlpPath = () => {
-    // 1. Try local node_modules (for Vercel/Local)
-    if (fs.existsSync(possibleBinPath)) {
-        return possibleBinPath;
-    }
-    // 2. Fallback to just 'yt-dlp' if in PATH
-    return 'yt-dlp';
-};
-
-const ytDlpPath = getYtDlpPath();
-console.log(`ℹ️ User determined yt-dlp path: ${ytDlpPath}`);
-
 // ===================== STREAM API (GET) =====================
 app.get('/api/stream/:id', (req, res) => {
     const { id } = req.params;
@@ -192,6 +173,10 @@ app.get('/api/stream/:id', (req, res) => {
     console.log(`🚀 Starting Stream for [${title}]...`);
 
     // Spawn yt-dlp directly
+    // Attempt to locate binary for spawn
+    const localBin = path.resolve(process.cwd(), 'node_modules/yt-dlp-exec/bin/yt-dlp');
+    const spawnPath = fs.existsSync(localBin) ? localBin : 'yt-dlp';
+
     const args = [
         '-f', formatSelector,
         '-o', '-',             // Output to stdout
@@ -202,8 +187,8 @@ app.get('/api/stream/:id', (req, res) => {
         url
     ];
 
-    // Note: ytDlpPath is resolved at top level
-    const child = spawn(ytDlpPath, args);
+    console.log(`🚀 Spawning: ${spawnPath}`);
+    const child = spawn(spawnPath, args);
 
     // Pipe stdout to response
     child.stdout.pipe(res);
