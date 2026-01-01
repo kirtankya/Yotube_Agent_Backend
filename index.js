@@ -10,7 +10,7 @@ import { v4 as uuid } from 'uuid';
 import os from 'os';
 const app = express();
 app.set('trust proxy', 1); // REQUIRED for Ngrok/Netlify to correctly generate download links
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 // ===================== PERMANENT CORS FIX (ALLOW ALL) =====================
 const corsOptions = {
@@ -106,6 +106,7 @@ app.get('/api/info', async (req, res) => {
             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
         res.json({
+            message: 'Video details fetched successfully!',
             title: output.title,
             thumbnail: output.thumbnail,
             videoFormats: uniqueVideoFormats,
@@ -245,6 +246,7 @@ app.post('/api/download', (req, res) => {
     // Return immediately
     res.json({
         status: 'tunnel',
+        message: 'Download started! Your video is being processed.',
         url: streamUrl,
     });
 });

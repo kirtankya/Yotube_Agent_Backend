@@ -129,6 +129,7 @@ app.get('/api/info', async (req, res) => {
             .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
 
         res.json({
+            message: 'Video details fetched successfully!',
             title: output.title,
             thumbnail: output.thumbnail,
             videoFormats: uniqueVideoFormats,
@@ -252,6 +253,7 @@ app.post('/api/download', (req, res) => {
     // Return immediately
     res.json({
         status: 'tunnel',
+        message: 'Download started! Your video is being processed.',
         url: streamUrl,
     });
 });
