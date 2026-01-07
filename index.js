@@ -1,8 +1,10 @@
 
 import express from 'express';
 import cors from 'cors';
-import { spawn } from 'child_process';
-import yt_dlp from 'yt-dlp-exec';
+import https from 'https';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const YTDlpWrap = require('yt-dlp-wrap').default || require('yt-dlp-wrap');
 import ffmpegPath from 'ffmpeg-static';
 import fs from 'fs';
 import path from 'path';
@@ -53,15 +55,8 @@ app.get('/api/info', async (req, res) => {
     try {
         console.log(`🔍 Fetching info for: ${url}`);
 
-        // Use yt-dlp to dump JSON
-        const output = await yt_dlp(url, {
-            dumpJson: true,
-            noWarnings: true,
-            preferFreeFormats: false,
-            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            referer: 'https://www.youtube.com/',
-            // Add cookies if needed locally, e.g., cookies: './cookies.txt'
-        });
+        // Use yt-dlp-wrap to get metadata
+        const output = await ytDlpWrap.getVideoInfo(url);
 
         // Parse formats
         // yt-dlp 'formats' list is extensive. We need to map to our frontend structure.
@@ -128,7 +123,7 @@ const downloadJobs = new Map();
 // ===================== YT-DLP BINARY PATH =====================
 // Detect platform to set correct binary path
 const isWindows = process.platform === 'win32';
-const possibleBinPath = path.resolve('./node_modules/yt-dlp-exec/bin/yt-dlp' + (isWindows ? '.exe' : ''));
+const possibleBinPath = path.resolve('./yt-dlp' + (isWindows ? '.exe' : ''));
 
 // Function to get the executable
 const getYtDlpPath = () => {
@@ -140,8 +135,33 @@ const getYtDlpPath = () => {
     return 'yt-dlp';
 };
 
+// Ensure Binary Exists (Download if missing)
+const ensureYtDlpBinary = async () => {
+    if (!fs.existsSync(possibleBinPath)) {
+        console.log('⚠️ yt-dlp binary not found locally. Downloading from GitHub...');
+        try {
+            await YTDlpWrap.downloadFromGithub(possibleBinPath);
+            console.log('✅ yt-dlp binary downloaded successfully!');
+            // Set executable permission on Linux/Mac
+            if (!isWindows) {
+                fs.chmodSync(possibleBinPath, '755');
+            }
+        } catch (err) {
+            console.error('❌ Failed to download yt-dlp:', err);
+        }
+    } else {
+        console.log('✅ yt-dlp binary found locally.');
+    }
+};
+
+// Execute the check immediately
+await ensureYtDlpBinary();
+
 const ytDlpPath = getYtDlpPath();
 console.log(`ℹ️ User determined yt-dlp path: ${ytDlpPath}`);
+
+// Initialize yt-dlp-wrap with resolved binary path (or 'yt-dlp' to use PATH)
+const ytDlpWrap = new YTDlpWrap(ytDlpPath);
 
 // ===================== STREAM API (GET) =====================
 app.get('/api/stream/:id', (req, res) => {
@@ -184,31 +204,28 @@ app.get('/api/stream/:id', (req, res) => {
         url
     ];
 
-    const child = spawn(ytDlpPath, args);
+    const stream = ytDlpWrap.execStream(args);
 
-    // Pipe stdout to response
-    child.stdout.pipe(res);
+    // Pipe to response
+    stream.pipe(res);
 
-    // Handle errors
-    child.stderr.on('data', (data) => {
-        // yt-dlp writes progress to stderr, so we might see it here.
-        // We can log it if strictly needed, but it might be verbose.
-        // console.log(`[yt-dlp stderr]: ${data}`);
+    stream.on('error', (err) => {
+        console.error('Stream error:', err);
     });
 
-    child.on('close', (code) => {
-        console.log(`🏁 Stream finished with code ${code}`);
-        if (code !== 0) {
-            // If connection wasn't already closed/headers sent, we could send error, 
-            // but since we're piping, the stream just ends.
-        }
+    stream.on('close', () => {
+        console.log('🏁 Stream finished (stream closed)');
     });
 
-    // If client disconnects, kill the process
+    // If client disconnects, kill the yt-dlp process
     req.on('close', () => {
-        if (!child.killed) {
-            console.log('❌ Client disconnected, killing download process.');
-            child.kill();
+        try {
+            if (stream && stream.ytDlpProcess && !stream.ytDlpProcess.killed) {
+                console.log('❌ Client disconnected, killing download process.');
+                stream.ytDlpProcess.kill();
+            }
+        } catch (e) {
+            // ignore
         }
     });
 });
@@ -255,5 +272,5 @@ app.post('/api/download', (req, res) => {
 // ===================== START SERVER =====================
 app.listen(PORT, () => {
     console.log(`✅ Server running at http://localhost:${PORT}`);
-    console.log(`   (Using yt-dlp-exec engine)`);
+    console.log(`   (Using yt-dlp-wrap engine)`);
 });
